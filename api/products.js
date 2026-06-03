@@ -1,8 +1,13 @@
 // Vercel Serverless Function: /api/products
-// 方案A：使用飞书多维表格公开访问
+// 使用 App Access Token 方式连接飞书
 
+const FEISHU_APP_ID = 'cli_aa9506f90338dbc0';
+const FEISHU_APP_SECRET = '4BBFnIDiVmlpPQxnNAKoDc1lXokuhvG7';
 const FEISHU_APP_TOKEN = 'D9Jxbdac9aFAb8sYdC1cmWFrn9g';
 const FEISHU_TABLE_ID = 'tbl9PM8TNSLTHSIJ';
+
+let cachedToken = null;
+let tokenExpire = 0;
 
 export default async function handler(req, res) {
     // 设置 CORS
@@ -17,8 +22,11 @@ export default async function handler(req, res) {
     try {
         const { model, action } = req.query;
         
-        // 使用飞书公开 API 获取数据
-        const products = await fetchProducts();
+        // 获取 Access Token
+        const accessToken = await getAccessToken();
+        
+        // 使用飞书 API 获取数据
+        const products = await fetchProducts(accessToken);
         
         // 返回所有产品列表
         if (action === 'list') {
@@ -57,30 +65,53 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error('API Error:', error);
-        
-        // 如果 API 失败，返回演示数据
-        const mockData = [
-            { model: 'SD0001', category: '5cm steel door', image: '' },
-            { model: 'SD0002', category: '5cm steel door', image: '' },
-            { model: 'SD0003', category: '5cm steel door', image: '' },
-        ];
-        
-        return res.status(200).json({
-            success: true,
-            data: mockData,
-            source: 'demo',
-            warning: '飞书表格未开启公开访问，请先在飞书表格设置中开启'
+        return res.status(500).json({
+            success: false,
+            message: '服务器错误',
+            error: error.message
         });
     }
 }
 
-// 从飞书获取产品数据（公开访问方式）
-async function fetchProducts() {
-    // 飞书公开 API（无需 Token）
+// 获取 App Access Token
+async function getAccessToken() {
+    // 如果缓存的 token 还没过期，直接返回
+    if (cachedToken && Date.now() < tokenExpire) {
+        return cachedToken;
+    }
+    
+    const response = await fetch(
+        'https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal',
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                app_id: FEISHU_APP_ID,
+                app_secret: FEISHU_APP_SECRET
+            })
+        }
+    );
+    
+    const data = await response.json();
+    
+    if (data.code !== 0 || !data.app_access_token) {
+        throw new Error(data.msg || 'Failed to get access token');
+    }
+    
+    // 缓存 token，留 5 分钟缓冲
+    cachedToken = data.app_access_token;
+    tokenExpire = Date.now() + (data.expire - 300) * 1000;
+    
+    return cachedToken;
+}
+
+// 从飞书获取产品数据
+async function fetchProducts(accessToken) {
     const response = await fetch(
         `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_APP_TOKEN}/tables/${FEISHU_TABLE_ID}/records?page_size=500`,
         {
             headers: {
+                'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             }
         }
@@ -113,6 +144,5 @@ async function fetchProducts() {
             });
     }
     
-    // 如果 API 返回错误，尝试使用 user_access_token
-    throw new Error(data.msg || 'Public API failed');
+    throw new Error(data.msg || 'Failed to fetch from Feishu');
 }
