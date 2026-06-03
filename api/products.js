@@ -72,11 +72,59 @@ async function getProducts(token) {
     const data = await resp.json();
     if (data.code !== 0) throw new Error(data.msg);
     
-    return (data.data.items || [])
+    const items = data.data.items || [];
+    
+    // 收集所有图片的file_token
+    const fileTokens = [];
+    const tokenToIndex = {};
+    items.forEach((item, idx) => {
+        const img = item.fields['产品图片'];
+        if (img && Array.isArray(img) && img[0]?.file_token) {
+            const ft = img[0].file_token;
+            fileTokens.push(ft);
+            tokenToIndex[ft] = idx;
+        }
+    });
+    
+    // 批量获取可下载的临时URL
+    let tokenUrls = {};
+    if (fileTokens.length > 0) {
+        try {
+            const urlResp = await fetch(
+                `https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url?file_tokens=${fileTokens.join(',')}`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            const urlData = await urlResp.json();
+            if (urlData.code === 0 && urlData.data) {
+                urlData.data.forEach(item => {
+                    if (item.download_url) {
+                        tokenUrls[item.file_token] = item.download_url;
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('获取图片URL失败:', e);
+        }
+    }
+    
+    return items
         .filter(item => item.fields['产品型号'])
-        .map(item => ({
-            model: item.fields['产品型号'] || '',
-            category: item.fields['产品类别']?.name || '',
-            image: item.fields['产品图片']?.[0]?.url || ''
-        }));
+        .map(item => {
+            const img = item.fields['产品图片'];
+            let imageUrl = '';
+            
+            if (img && Array.isArray(img) && img[0]?.file_token) {
+                const ft = img[0].file_token;
+                // 优先使用临时下载URL
+                imageUrl = tokenUrls[ft] || img[0].url || '';
+            } else if (img && img.url) {
+                imageUrl = img.url;
+            }
+            
+            return {
+                model: item.fields['产品型号'] || '',
+                category: item.fields['产品类别']?.name || '',
+                image: imageUrl
+            };
+        });
 }
