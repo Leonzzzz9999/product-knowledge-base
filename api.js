@@ -4,51 +4,31 @@ const FEISHU_CONFIG = {
     TABLE_ID: 'tbl9PM8TNSLTHSIJ',               // 数据表 ID
 };
 
-// 获取飞书 Access Token（需要配置）
-let ACCESS_TOKEN = '';
+// API 基础地址（部署后会自动设置为 Vercel 域名）
+const API_BASE = window.location.origin;
 
-// 模拟数据（当没有 API Token 时使用）
+// 模拟数据（当 API 不可用时使用）
 const MOCK_DATA = [
-    { model: 'PRO-001', category: '类别A', image: 'https://via.placeholder.com/200x200?text=PRO-001' },
-    { model: 'PRO-002', category: '类别B', image: 'https://via.placeholder.com/200x200?text=PRO-002' },
-    { model: 'PRO-003', category: '类别C', image: 'https://via.placeholder.com/200x200?text=PRO-003' },
+    { model: 'PRO-001', category: '类别A', image: 'https://via.placeholder.com/200x200/667eea/ffffff?text=PRO-001' },
+    { model: 'PRO-002', category: '类别B', image: 'https://via.placeholder.com/200x200/764ba2/ffffff?text=PRO-002' },
+    { model: 'PRO-003', category: '类别C', image: 'https://via.placeholder.com/200x200/36e195/ffffff?text=PRO-003' },
 ];
 
-// 获取飞书 Access Token
-async function getFeishuToken() {
-    // 这里需要配置你的飞书应用凭证
-    // 方式1: 使用环境变量（部署到 Vercel 时配置）
-    // 方式2: 使用后端代理（更安全）
-    
-    // 临时使用模拟数据
-    return null;
-}
-
-// 从飞书获取产品数据
+// 从 API 获取产品数据
 async function fetchProducts() {
-    // 优先使用 ACCESS_TOKEN 调用真实 API
-    if (ACCESS_TOKEN) {
-        try {
-            const response = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_CONFIG.APP_TOKEN}/tables/${FEISHU_CONFIG.TABLE_ID}/records`, {
-                headers: {
-                    'Authorization': `Bearer ${ACCESS_TOKEN}`,
-                }
-            });
-            const data = await response.json();
-            if (data.code === 0) {
-                return data.data.items.map(item => ({
-                    model: item.fields['产品型号'] || '',
-                    category: item.fields['产品类别']?.name || '',
-                    image: item.fields['产品图片']?.[0]?.url || '',
-                    recordId: item.record_id
-                }));
-            }
-        } catch (error) {
-            console.error('飞书 API 调用失败:', error);
+    try {
+        const response = await fetch(`${API_BASE}/api/products?action=all`);
+        const data = await response.json();
+        
+        if (data.success && data.data.length > 0) {
+            console.log(`数据来源: ${data.source}`);
+            return data.data;
         }
+    } catch (error) {
+        console.error('API 调用失败:', error);
     }
     
-    // 使用模拟数据
+    // API 不可用时使用模拟数据
     return MOCK_DATA;
 }
 
@@ -65,20 +45,45 @@ async function searchByModel() {
     resultDiv.classList.add('show');
 
     try {
-        const products = await fetchProducts();
+        const response = await fetch(`${API_BASE}/api/products?action=search&model=${encodeURIComponent(model)}`);
+        const data = await response.json();
+
+        if (data.success && data.data) {
+            resultDiv.innerHTML = `
+                <div class="result-item">
+                    <img src="${data.data.image}" alt="${data.data.model}" class="result-image" onerror="this.src='https://via.placeholder.com/200x200/e0e0e0/666666?text=No+Image'">
+                    <div class="result-info">
+                        <h3>📦 ${data.data.model}</h3>
+                        <p><strong>产品型号：</strong>${data.data.model}</p>
+                        <p><strong>产品类别：</strong><span class="category">${data.data.category}</span></p>
+                        <p style="margin-top: 10px; color: #4CAF50; font-size: 12px;">✅ 数据来源: ${data.source}</p>
+                    </div>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="no-result">
+                    <p>❌ 未找到型号为 "${model}" 的产品</p>
+                    <p style="margin-top: 10px;">请检查型号是否正确，或联系管理员添加该产品。</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        // API 不可用时使用本地模拟数据
+        const products = MOCK_DATA;
         const product = products.find(p => 
             p.model && p.model.toLowerCase().includes(model.toLowerCase())
         );
 
-        if (product && product.image) {
+        if (product) {
             resultDiv.innerHTML = `
                 <div class="result-item">
-                    <img src="${product.image}" alt="${product.model}" class="result-image" onerror="this.src='https://via.placeholder.com/200x200?text=No+Image'">
+                    <img src="${product.image}" alt="${product.model}" class="result-image">
                     <div class="result-info">
                         <h3>📦 ${product.model}</h3>
                         <p><strong>产品型号：</strong>${product.model}</p>
                         <p><strong>产品类别：</strong><span class="category">${product.category}</span></p>
-                        <p style="margin-top: 10px; color: #999; font-size: 12px;">⚠️ 使用模拟数据，请配置飞书 API</p>
+                        <p style="margin-top: 10px; color: #999; font-size: 12px;">⚠️ 使用演示数据，请配置飞书 API</p>
                     </div>
                 </div>
             `;
@@ -90,8 +95,6 @@ async function searchByModel() {
                 </div>
             `;
         }
-    } catch (error) {
-        resultDiv.innerHTML = `<div class="no-result">查询失败：${error.message}</div>`;
     }
 }
 
