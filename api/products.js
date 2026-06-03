@@ -37,6 +37,7 @@ module.exports = async (req, res) => {
             total: products.length
         });
     } catch (error) {
+        console.error('API Error:', error);
         return res.status(500).json({
             success: false,
             message: error.message
@@ -115,15 +116,27 @@ async function getProducts(token) {
             
             if (img && Array.isArray(img) && img[0]?.file_token) {
                 const ft = img[0].file_token;
-                // 优先使用临时下载URL
                 imageUrl = tokenUrls[ft] || img[0].url || '';
             } else if (img && img.url) {
                 imageUrl = img.url;
             }
             
+            // 处理产品类别 - 可能是字符串或对象
+            const category = item.fields['产品类别'];
+            let categoryText = '';
+            if (category) {
+                if (typeof category === 'string') {
+                    categoryText = category;
+                } else if (category.name) {
+                    categoryText = category.name;
+                } else if (Array.isArray(category) && category[0]) {
+                    categoryText = typeof category[0] === 'string' ? category[0] : (category[0].name || '');
+                }
+            }
+            
             return {
                 model: item.fields['产品型号'] || '',
-                category: item.fields['产品类别']?.name || '',
+                category: categoryText,
                 image: imageUrl
             };
         });
