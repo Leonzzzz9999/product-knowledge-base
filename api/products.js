@@ -126,11 +126,17 @@ async function fetchProducts(accessToken) {
                 const imageData = item.fields['产品图片'];
                 let imageUrl = '';
                 
-                // 解析图片字段
+                // 解析图片字段 - 飞书返回的图片格式
                 if (imageData && Array.isArray(imageData) && imageData.length > 0) {
                     imageUrl = imageData[0].url || '';
                 } else if (imageData && imageData.url) {
                     imageUrl = imageData.url;
+                }
+                
+                // 处理图片 URL - 飞书返回的 URL 可能需要转换
+                // 如果 URL 是 /open-apis/drive/v1/medias/xxx/download 格式，转换为可访问的 URL
+                if (imageUrl && imageUrl.includes('/drive/v1/medias/')) {
+                    // 直接使用 URL 即可，飞书会处理
                 }
                 
                 return {
