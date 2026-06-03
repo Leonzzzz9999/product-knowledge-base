@@ -7,13 +7,6 @@ const FEISHU_CONFIG = {
 // API 基础地址
 const API_BASE = window.location.origin;
 
-// 模拟数据
-const MOCK_DATA = [
-    { model: 'PRO-001', category: '类别A', image: 'https://via.placeholder.com/200x200/667eea/ffffff?text=PRO-001' },
-    { model: 'PRO-002', category: '类别B', image: 'https://via.placeholder.com/200x200/764ba2/ffffff?text=PRO-002' },
-    { model: 'PRO-003', category: '类别C', image: 'https://via.placeholder.com/200x200/36e195/ffffff?text=PRO-003' },
-];
-
 // 按型号查询
 async function searchByModel() {
     const model = document.getElementById('modelInput').value.trim();
@@ -33,33 +26,21 @@ async function searchByModel() {
 
         if (data.success && data.data) {
             const product = data.data;
-            const sourceLabel = '✅ 真实数据';
             
-            if (product.image) {
-                resultDiv.innerHTML = `
-                    <div class="result-item">
-                        <img src="${product.image}" alt="${product.model}" class="result-image" onerror="this.src='https://via.placeholder.com/200x200/e0e0e0/666666?text=No+Image'">
-                        <div class="result-info">
-                            <h3>📦 ${product.model}</h3>
-                            <p><strong>产品型号：</strong>${product.model}</p>
-                            <p><strong>产品类别：</strong><span class="category">${product.category}</span></p>
-                            <p style="margin-top: 10px; color: #4CAF50; font-size: 12px;">${sourceLabel}</p>
-                        </div>
+            // 调试信息
+            console.log('API返回数据:', product);
+            
+            resultDiv.innerHTML = `
+                <div class="result-item">
+                    ${product.image ? `<img src="${product.image}" alt="${product.model}" class="result-image" onerror="this.style.display='none'">` : '<div style="width:200px;height:200px;background:#eee;display:flex;align-items:center;justify-content:center;color:#999;">无图片</div>'}
+                    <div class="result-info">
+                        <h3>📦 ${product.model || '未知型号'}</h3>
+                        <p><strong>产品型号：</strong>${product.model || '-'}</p>
+                        <p><strong>产品类别：</strong><span class="category">${product.category || '-'}</span></p>
+                        <p style="margin-top: 10px; color: #4CAF50; font-size: 12px;">✅ 真实数据</p>
                     </div>
-                `;
-            } else {
-                resultDiv.innerHTML = `
-                    <div class="result-item">
-                        <div class="result-info">
-                            <h3>📦 ${product.model}</h3>
-                            <p><strong>产品型号：</strong>${product.model}</p>
-                            <p><strong>产品类别：</strong><span class="category">${product.category}</span></p>
-                            <p style="margin-top: 10px; color: #999;">⚠️ 该产品暂无图片</p>
-                            <p style="margin-top: 5px; color: #4CAF50; font-size: 12px;">${sourceLabel}</p>
-                        </div>
-                    </div>
-                `;
-            }
+                </div>
+            `;
         } else {
             resultDiv.innerHTML = `
                 <div class="no-result">
@@ -71,7 +52,8 @@ async function searchByModel() {
         console.error('查询失败:', error);
         resultDiv.innerHTML = `
             <div class="no-result">
-                <p>❌ 网络错误，请稍后重试</p>
+                <p>❌ 网络错误</p>
+                <p style="margin-top:10px;font-size:12px;color:#666;">${error.message}</p>
             </div>
         `;
     }
@@ -93,7 +75,6 @@ async function searchByImage() {
         resultDiv.innerHTML = `
             <div class="no-result">
                 <p>🔧 图片识别功能正在配置中</p>
-                <p style="margin-top: 10px;">请联系管理员开通 AI 图像识别功能。</p>
             </div>
         `;
     }, 1500);
