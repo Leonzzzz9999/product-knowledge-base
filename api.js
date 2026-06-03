@@ -2,17 +2,91 @@
 const FEISHU_CONFIG = {
     APP_TOKEN: 'D9Jxbdac9aFAb8sYdC1cmWFrn9g',
     TABLE_ID: 'tbl9PM8TNSLTHSIJ',
+    APP_ID: 'cli_aa9506f90338dbc0',
+    APP_SECRET: '4BBFnIDiVmlpPQxnNAKoDc1lXokuhvG7'
 };
 
-// API 基础地址
-const API_BASE = window.location.origin;
+// 缓存
+let cachedToken = null;
+let tokenExpire = 0;
+let cachedProducts = null;
+let productsExpire = 0;
 
-// 模拟数据
-const MOCK_DATA = [
-    { model: 'PRO-001', category: '类别A', image: 'https://via.placeholder.com/200x200/667eea/ffffff?text=PRO-001' },
-    { model: 'PRO-002', category: '类别B', image: 'https://via.placeholder.com/200x200/764ba2/ffffff?text=PRO-002' },
-    { model: 'PRO-003', category: '类别C', image: 'https://via.placeholder.com/200x200/36e195/ffffff?text=PRO-003' },
-];
+// 获取 App Access Token
+async function getAccessToken() {
+    if (cachedToken && Date.now() < tokenExpire) {
+        return cachedToken;
+    }
+    
+    const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            app_id: FEISHU_CONFIG.APP_ID,
+            app_secret: FEISHU_CONFIG.APP_SECRET
+        })
+    });
+    
+    const data = await response.json();
+    
+    if (data.code !== 0 || !data.app_access_token) {
+        throw new Error(data.msg || '获取 Token 失败');
+    }
+    
+    cachedToken = data.app_access_token;
+    tokenExpire = Date.now() + (data.expire - 300) * 1000;
+    
+    return cachedToken;
+}
+
+// 获取所有产品
+async function getProducts() {
+    if (cachedProducts && Date.now() < productsExpire) {
+        return cachedProducts;
+    }
+    
+    const token = await getAccessToken();
+    
+    const response = await fetch(
+        `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_CONFIG.APP_TOKEN}/tables/${FEISHU_CONFIG.TABLE_ID}/records?page_size=500`,
+        {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        }
+    );
+    
+    const data = await response.json();
+    
+    if (data.code !== 0 || !data.data) {
+        throw new Error(data.msg || '获取产品数据失败');
+    }
+    
+    cachedProducts = data.data.items
+        .filter(item => item.fields['产品型号'])
+        .map(item => {
+            const imageData = item.fields['产品图片'];
+            let imageUrl = '';
+            
+            if (imageData && Array.isArray(imageData) && imageData.length > 0) {
+                imageUrl = imageData[0].url || '';
+            }
+            
+            return {
+                model: item.fields['产品型号'] || '',
+                category: (item.fields['产品类别'] && item.fields['产品类别'].name) 
+                    ? item.fields['产品类别'].name 
+                    : (Array.isArray(item.fields['产品类别']) ? item.fields['产品类别'][0] : ''),
+                image: imageUrl,
+                recordId: item.record_id
+            };
+        });
+    
+    productsExpire = Date.now() + 5 * 60 * 1000; // 缓存 5 分钟
+    
+    return cachedProducts;
+}
 
 // 按型号查询
 async function searchByModel() {
@@ -27,14 +101,12 @@ async function searchByModel() {
     resultDiv.classList.add('show');
 
     try {
-        // 调用后端 API
-        const response = await fetch(`${API_BASE}/api/products?action=search&model=${encodeURIComponent(model)}`);
-        const data = await response.json();
-
-        if (data.success && data.data) {
-            const product = data.data;
-            const sourceLabel = data.source === 'feishu' ? '✅ 真实数据' : '⚠️ 演示数据';
-            
+        const products = await getProducts();
+        const product = products.find(p => 
+            p.model && p.model.toLowerCase() === model.toLowerCase()
+        );
+        
+        if (product) {
             if (product.image) {
                 resultDiv.innerHTML = `
                     <div class="result-item">
@@ -43,7 +115,7 @@ async function searchByModel() {
                             <h3>📦 ${product.model}</h3>
                             <p><strong>产品型号：</strong>${product.model}</p>
                             <p><strong>产品类别：</strong><span class="category">${product.category}</span></p>
-                            <p style="margin-top: 10px; color: #4CAF50; font-size: 12px;">${sourceLabel}</p>
+                            <p style="margin-top: 10px; color: #4CAF50; font-size: 12px;">✅ 真实数据</p>
                         </div>
                     </div>
                 `;
@@ -55,7 +127,7 @@ async function searchByModel() {
                             <p><strong>产品型号：</strong>${product.model}</p>
                             <p><strong>产品类别：</strong><span class="category">${product.category}</span></p>
                             <p style="margin-top: 10px; color: #999;">⚠️ 该产品暂无图片</p>
-                            <p style="margin-top: 5px; color: #4CAF50; font-size: 12px;">${sourceLabel}</p>
+                            <p style="margin-top: 5px; color: #4CAF50; font-size: 12px;">✅ 真实数据</p>
                         </div>
                     </div>
                 `;
@@ -64,35 +136,17 @@ async function searchByModel() {
             resultDiv.innerHTML = `
                 <div class="no-result">
                     <p>❌ 未找到型号为 "${model}" 的产品</p>
-                    <p style="margin-top: 10px;">请检查型号是否正确。</p>
                 </div>
             `;
         }
     } catch (error) {
-        // API 不可用时使用本地模拟数据
-        const product = MOCK_DATA.find(p => 
-            p.model && p.model.toLowerCase().includes(model.toLowerCase())
-        );
-
-        if (product) {
-            resultDiv.innerHTML = `
-                <div class="result-item">
-                    <img src="${product.image}" alt="${product.model}" class="result-image">
-                    <div class="result-info">
-                        <h3>📦 ${product.model}</h3>
-                        <p><strong>产品型号：</strong>${product.model}</p>
-                        <p><strong>产品类别：</strong><span class="category">${product.category}</span></p>
-                        <p style="margin-top: 10px; color: #ff9800; font-size: 12px;">⚠️ 离线模式 - 演示数据</p>
-                    </div>
-                </div>
-            `;
-        } else {
-            resultDiv.innerHTML = `
-                <div class="no-result">
-                    <p>❌ 未找到型号为 "${model}" 的产品</p>
-                </div>
-            `;
-        }
+        console.error('查询失败:', error);
+        resultDiv.innerHTML = `
+            <div class="no-result">
+                <p>❌ 查询失败</p>
+                <p style="margin-top: 10px; font-size: 12px; color: #666;">${error.message}</p>
+            </div>
+        `;
     }
 }
 
@@ -112,7 +166,6 @@ async function searchByImage() {
         resultDiv.innerHTML = `
             <div class="no-result">
                 <p>🔧 图片识别功能正在配置中</p>
-                <p style="margin-top: 10px;">请联系管理员开通 AI 图像识别功能。</p>
             </div>
         `;
     }, 1500);
