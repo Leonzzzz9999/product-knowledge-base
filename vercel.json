@@ -6,22 +6,18 @@
       "use": "@vercel/node"
     },
     {
-      "src": "api.js",
+      "src": "**/*.html",
       "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/api/products",
-      "dest": "/api/products.js"
-    },
-    {
-      "src": "/api.js",
-      "dest": "/api.js"
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/$1"
+      "dest": "/index.html"
     }
   ]
 }
