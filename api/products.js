@@ -9,11 +9,30 @@ const FEISHU_TABLE_ID = 'tbl9PM8TNSLTHSIJ';
 let cachedToken = null;
 let tokenExpire = 0;
 
+// 带超时的 fetch
+async function fetchWithTimeout(url, options, timeout = 8000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+    }
+}
+
 export default async function handler(req, res) {
     // 设置 CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Cache-Control', 'no-cache');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
@@ -80,7 +99,7 @@ async function getAccessToken() {
         return cachedToken;
     }
     
-    const response = await fetch(
+    const response = await fetchWithTimeout(
         'https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal',
         {
             method: 'POST',
@@ -89,7 +108,8 @@ async function getAccessToken() {
                 app_id: FEISHU_APP_ID,
                 app_secret: FEISHU_APP_SECRET
             })
-        }
+        },
+        5000
     );
     
     const data = await response.json();
@@ -107,14 +127,15 @@ async function getAccessToken() {
 
 // 从飞书获取产品数据
 async function fetchProducts(accessToken) {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
         `https://open.feishu.cn/open-apis/bitable/v1/apps/${FEISHU_APP_TOKEN}/tables/${FEISHU_TABLE_ID}/records?page_size=500`,
         {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             }
-        }
+        },
+        10000
     );
     
     const data = await response.json();
@@ -131,12 +152,6 @@ async function fetchProducts(accessToken) {
                     imageUrl = imageData[0].url || '';
                 } else if (imageData && imageData.url) {
                     imageUrl = imageData.url;
-                }
-                
-                // 处理图片 URL - 飞书返回的 URL 可能需要转换
-                // 如果 URL 是 /open-apis/drive/v1/medias/xxx/download 格式，转换为可访问的 URL
-                if (imageUrl && imageUrl.includes('/drive/v1/medias/')) {
-                    // 直接使用 URL 即可，飞书会处理
                 }
                 
                 return {
